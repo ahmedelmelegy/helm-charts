@@ -1,0 +1,4 @@
+{{- if hasKey .Values.global.services "placeholder" }}
+{{$data := dict "root" . "service" .Values.global.services.placeholder}}
+{{- include "main.deployment" $data }}
+{{- end }}
