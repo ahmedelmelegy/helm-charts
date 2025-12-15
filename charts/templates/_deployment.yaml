@@ -1,0 +1,219 @@
+
+{{- define "main.deployment" -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .root.Values.global.env.short }}-{{ .service.name }}-api
+  namespace: {{ default .root.Values.global.defaultNamespace .service.namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .root.Values.global.env.short }}-{{ .service.name }}-api-deployment
+  namespace: {{ default .root.Values.global.defaultNamespace .service.namespace }}
+spec:
+  revisionHistoryLimit: {{ default 1 (.service.revisionHistoryLimit) }}
+  {{- if eq (toString .service.replicas) "disabled" }}
+  replicas: 0
+  {{- else }}
+  replicas: {{ default .root.Values.global.replicas .service.replicas }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: {{ .root.Values.global.env.short }}-{{ .service.name }}-api
+  template:
+    metadata:
+      labels:
+        app: {{ .root.Values.global.env.short }}-{{ .service.name }}-api
+        version : {{ .service.buildId | quote }}
+        namespace: {{ default .root.Values.global.defaultNamespace .service.namespace }}
+      annotations:
+      {{- range $val := .service.volumes }}
+      {{- $configMapName := print $.root.Values.global.env.short "-nginx-" $.service.name }}
+      {{- if eq $val.sourceName $configMapName }}
+        checksum/nginx: {{ include ("main.nginx") $ | sha256sum }}
+      {{- end }}
+      {{- end }}
+      {{- with .root.Values.global.podAnnotations }}
+        # write global annotations
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .service.podAnnotations }}
+        # service annotations
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- if .service.nodeAffinity }}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                {{- range $val := .service.nodeAffinity }}
+                - {{ $val }}
+                {{- end }}
+      {{- end }}
+      serviceAccountName: {{ .root.Values.global.env.short }}-{{ .service.name }}-api
+      imagePullSecrets:
+      - name: regcred
+    {{- with .service.additionalImagePullSecrets }}
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+      securityContext:
+        fsGroup: {{ .root.Values.global.security.defaultFsGroup }}
+        runAsNonRoot: true
+        runAsUser: {{ .root.Values.global.security.defaultUser }}
+        runAsGroup: {{ .root.Values.global.security.defaultGroup }}
+      {{- if .service.nameservers }}
+      dnsConfig:
+        nameservers:
+        {{- range $val := .service.nameservers }}
+        - {{ $val }}
+        {{- end }}
+      {{- end }}
+      {{- if .service.tolerations }}
+      tolerations:
+      {{- range $val := .service.tolerations }}
+      - key: {{ $val.key }}
+        operator: {{ $val.operator }}
+        value: {{ $val.value }}
+        effect: {{ $val.effect }}
+      {{- end }}
+      {{- end }}  
+      containers:
+      - name: {{ .root.Values.global.env.short }}-{{ .service.name }}-api-pod
+        command: 
+        {{- $repository := .service.name }}
+        {{- if hasKey .service "repository" }}
+        {{- $repository = .service.repository }}
+        {{- end }}
+        image: "{{ printf "%s/%s-service:%s-%s" (default .root.Values.global.registry .service.registry) $repository (default .root.Values.global.env.imagePrefix .service.imagePrefix) (toString .service.buildId) }}"
+        {{- if .service.imagepullpolicy }}
+        imagePullPolicy: Always
+        {{- end }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          {{- if .service.security }}
+          runAsUser: {{ default .root.Values.global.security.defaultUser .service.security.runAsUser }}
+          runAsGroup: {{ default .root.Values.global.security.defaultUser .service.security.runAsGroup }}
+          {{- end }}
+        {{- if not .service.skipHealthChecks }}
+        readinessProbe:
+          exec:
+            command:
+            - wget
+            - -q
+            - http://localhost:1080/health
+            - -O
+            - /dev/null
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+        {{- if not .service.customLivenessProbe }}
+        livenessProbe:
+          exec:
+            command:
+            - wget
+            - -q
+            - http://localhost:1080/health
+            - -O
+            - /dev/null
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+        {{- end }}
+        {{- range $val := .service.customLivenessProbeConfig }}
+        livenessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "{{ $val.command }}"]
+          initialDelaySeconds: {{ $val.initDelaySec }}
+          periodSeconds: {{ $val.periodSeconds }}
+        {{- end }}
+        {{- end }}
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "1m" #TODO: please spread services to other clusters
+          limits:
+            memory: "1000Mi"
+            cpu: "200m"
+        ports:
+        {{- range $val := .service.customPorts }}
+        - name: {{ $val.name }}
+          containerPort: {{ $val.port }}
+        {{- end }}
+        {{- if not .service.customPorts }}
+        {{- if .service.forceHttps }}
+        - name: https
+          containerPort: 443
+        {{- else }}
+        - name: http
+          containerPort: 1080
+        {{- end }}
+        {{- end }}
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: LOGS
+          value: "/log/$(POD_NAME)"
+        - name: IsRunInEnvironments
+          value: "true"
+        {{- range $key, $val := .service.env }}
+        - name: {{ $key  }}
+          value: {{ $val  | quote}}
+        {{- end }}
+        {{- if .service.extraEnv }}
+        - name: API_USER
+          valueFrom:
+           secretKeyRef:
+            name: website
+            key: API_USER
+        - name: API_PASSWORD
+          valueFrom:
+           secretKeyRef:
+            name: website
+            key: API_PASSWORD
+        - name: NEXT_PUBLIC_RECAPTCHA_SITE_KEY
+          valueFrom:
+           secretKeyRef:
+            name: website
+            key: NEXT_PUBLIC_RECAPTCHA_SITE_KEY
+        - name: RECAPTCHA_SECRET_KEY
+          valueFrom:
+           secretKeyRef:
+            name: website
+            key: RECAPTCHA_SECRET_KEY
+        {{- end }}
+        volumeMounts:
+        {{- range $val := .service.persistentVolumeClaims }}
+        - mountPath: {{ $val.mountPath }}
+          name: {{ $val.name }}
+        {{- end }}
+        {{- range $val := .service.volumeMounts }}
+        - name: {{ $val.name }}
+          mountPath: {{ $val.mountPath }}
+          subPath: {{ default "" $val.subPath }}
+        {{- end }}
+      volumes:
+      {{- range $val := .service.persistentVolumeClaims }}
+      - name: {{ $val.name }}
+        persistentVolumeClaim:
+          claimName: {{ $val.claimName }}
+      {{- end }}
+      {{- range $val := .service.volumes }}
+      - name: {{ $val.name }}
+        {{ $val.source }}:
+          name: {{ $val.sourceName }}
+      {{- end }}
+{{- end -}}
