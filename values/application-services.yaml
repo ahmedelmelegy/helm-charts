@@ -1,0 +1,62 @@
+global:
+  defaultNamespace: default
+  registry: azurecr.io
+  replicas: 1
+  security:
+    defaultFsGroup: 1999
+    defaultUser: 1999
+    defaultGroup: 1999
+    runAsNonRoot: true
+  podAnnotations:
+    sidecar.istio.io/proxyCPU: 10m # reduce limit so that reservation stays low
+  istio:
+    tls:
+      credentialName: wildcard.dev.dt.local
+  env:
+    name: Dev
+    short: dev
+    imagePrefix: dev
+    chartBuildId: 0
+    host: "svc-cde-pgw.dev.dt.local"
+    isPrimary: true
+    database: "10.69.24.96"
+    psql_database: "dev-ncde-psql.ch4o6o00gtqc.me-central-1.rds.amazonaws.com"
+  services:
+    ##1 puglic nginx gateway api
+    api_gateway:
+      name: apigw
+      namespace: dev-apigw
+      image: "public.ecr.aws/nginx/nginx:stable-alpine"
+      imagepullpolicy: true
+      skipHealthChecks: true
+      security:
+        runAsUser: 101
+        runAsGroup: 101
+      volumes:
+        - name: nginx-conf-volume
+          source: configMap
+          sourceName: dev-nginx-apigw
+        - name: nginx-404-html
+          source: configMap
+          sourceName: dev-nginx-apigw-404-html
+      volumeMounts:
+        - name: nginx-conf-volume
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        - name: nginx-conf-volume
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: vhost.conf
+        - name: nginx-404-html
+          mountPath: /usr/share/nginx/html/404.html
+          subPath: 404.html
+    ##2 dev-data 
+    config:
+      name: config
+      namespace: "dev-data"
+      buildId: 3.0.1007
+    config_ns:
+      name: config-ns
+      namespace: "dev-data"
+      buildId: 3.0.999
+      imagePrefix: ksa-dev
+      repository: config
