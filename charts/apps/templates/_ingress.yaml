@@ -1,0 +1,29 @@
+{{- define "main.ingress" -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .root.Values.global.env.short }}-{{ .service.name }}-ingress
+  namespace: {{ default .root.Values.global.defaultNamespace .service.namespace }}
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # external-dns.alpha.kubernetes.io/hostname: {{ .service.name }}-{{ .root.Values.global.env.host }}
+    # link.argocd.argoproj.io/external-link: https://{{ .service.name }}-{{ .root.Values.global.env.host }}
+spec:
+#   tls:
+#     - hosts:
+#         - {{ .service.name }}-{{ .root.Values.global.env.host }}
+#       secretName: {{ default "nginx-tls" .service.tlsSecret }}
+  rules:
+    - host: {{ .service.name }}-{{ .root.Values.global.env.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .root.Values.global.env.short }}-{{ .service.name }}-api-service
+                port:
+                  number: {{ default 1080 .service.ingressPort }}
+{{- end -}}
