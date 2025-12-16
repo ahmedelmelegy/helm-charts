@@ -7,11 +7,9 @@ global:
     defaultUser: 1999
     defaultGroup: 1999
     runAsNonRoot: true
-  podAnnotations:
-    sidecar.istio.io/proxyCPU: 10m # reduce limit so that reservation stays low
-  istio:
-    tls:
-      credentialName: wildcard.dev.dt.local
+  # istio:
+  #   tls:
+  #     credentialName: wildcard.dev.dt.local
   env:
     name: Dev
     short: dev
