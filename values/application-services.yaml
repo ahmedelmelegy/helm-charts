@@ -17,39 +17,9 @@ global:
     short: dev
     imagePrefix: dev
     chartBuildId: 0
-    host: "svc-cde-pgw.dev.dt.local"
+    host: ".dev.dt.local"
     isPrimary: true
-    database: "10.69.24.96"
-    psql_database: "dev-ncde-psql.ch4o6o00gtqc.me-central-1.rds.amazonaws.com"
   services:
-    ##1 puglic nginx gateway api
-    api_gateway:
-      name: apigw
-      namespace: dev-apigw
-      image: "public.ecr.aws/nginx/nginx:stable-alpine"
-      imagepullpolicy: true
-      skipHealthChecks: true
-      security:
-        runAsUser: 101
-        runAsGroup: 101
-      volumes:
-        - name: nginx-conf-volume
-          source: configMap
-          sourceName: dev-nginx-apigw
-        - name: nginx-404-html
-          source: configMap
-          sourceName: dev-nginx-apigw-404-html
-      volumeMounts:
-        - name: nginx-conf-volume
-          mountPath: /etc/nginx/nginx.conf
-          subPath: nginx.conf
-        - name: nginx-conf-volume
-          mountPath: /etc/nginx/conf.d/default.conf
-          subPath: vhost.conf
-        - name: nginx-404-html
-          mountPath: /usr/share/nginx/html/404.html
-          subPath: 404.html
-    ##2 dev-data 
     config:
       name: config
       namespace: "dev-data"
