@@ -1,0 +1,34 @@
+{{- define "apps.service" -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .root.Values.global.env.short }}-{{ .service.name }}-api-service
+  namespace: {{ default .root.Values.global.defaultNamespace .service.namespace }}
+  labels:
+    app: {{ .root.Values.global.env.short }}-{{ .root.Values.global.env.short }}-{{ .service.name }}-api-service
+    {{- if or (eq (toString .service.replicas) "disabled") (eq (int (default .root.Values.global.replicas .service.replicas)) 0) }}
+    replicacount: "0"
+    {{- end }}
+spec:
+  type: NodePort
+  ports:
+  {{- range $val := .service.customPorts }}
+  - name: {{ $val.name }}
+    port: {{ $val.port }}
+    protocol: {{ $val.protocol }}
+  {{- end }}
+  {{- if not .service.customPorts }}
+  {{- if .service.forceHttps }}
+  - port: 443
+    name: https
+    protocol: TCP
+  {{- else }}
+  # Rule: if the service is in the public-api namespace, rename the port to https
+  - port: 1080 
+    name: http
+    protocol: TCP 
+  {{- end }}
+  {{- end }}
+  selector: 
+    app: {{ .root.Values.global.env.short }}-{{ .service.name }}-api
+{{- end -}}
