@@ -1,4 +1,4 @@
-{{- define "apps.service" -}}
+{{- define "main.service" -}}
 apiVersion: v1
 kind: Service
 metadata:
